@@ -3,8 +3,8 @@
     <h1>我的笔记</h1>
 
     <button @click="openAddModal" class="action-button add-new-button">新增笔记</button>
-
     <button @click="fetchNotes" class="fetch-button">刷新笔记</button>
+    <button @click="logout" class="logout-button">退出</button>
     <p v-if="loading" class="loading-message">正在加载笔记...</p>
     <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
 
@@ -13,7 +13,7 @@
         <h3>{{ note.title }}</h3>
         <p>{{ note.content }}</p>
         <small>创建于: {{ new Date(note.created_at).toLocaleDateString() }}</small>
-        <small> ｜ </small>
+        <small> | </small>
         <small>更新于: {{ new Date(note.update_at).toLocaleDateString() }}</small>
         <div class="note-actions">
           <button @click="openEditModal(note)" class="action-button edit-button">编辑</button>
@@ -25,21 +25,20 @@
       您还没有任何笔记。
     </p>
 
-    <div v-if="showAddModal" class="modal-overlay" @click.self="closeAddModal">
-      <div class="modal-content">
-        <h2>新增笔记</h2>
-        <input
-          v-model="newNote.title"
-          placeholder="笔记标题"
-          class="form-input"
-          aria-label="新笔记标题"
-        />
-        <textarea
-          v-model="newNote.content"
-          placeholder="笔记内容"
-          class="form-textarea"
-          aria-label="新笔记内容"
-        ></textarea>
+    <Modal :show="showAddModal" title="新增笔记" @close="closeAddModal">
+      <input
+        v-model="newNote.title"
+        placeholder="笔记标题"
+        class="form-input"
+        aria-label="新笔记标题"
+      />
+      <textarea
+        v-model="newNote.content"
+        placeholder="笔记内容"
+        class="form-textarea"
+        aria-label="新笔记内容"
+      ></textarea>
+      <template #footer>
         <div class="modal-actions">
           <button @click="addNote" :disabled="isAdding" class="action-button primary-button">
             {{ isAdding ? '添加中...' : '创建' }}
@@ -47,24 +46,23 @@
           <button @click="closeAddModal" class="action-button secondary-button">取消</button>
         </div>
         <p v-if="addErrorMessage" class="error-message">{{ addErrorMessage }}</p>
-      </div>
-    </div>
+      </template>
+    </Modal>
 
-    <div v-if="showEditModal" class="modal-overlay" @click.self="closeEditModal">
-      <div class="modal-content">
-        <h2>编辑笔记</h2>
-        <input
-          v-model="currentNote.title"
-          placeholder="笔记标题"
-          class="form-input"
-          aria-label="编辑笔记标题"
-        />
-        <textarea
-          v-model="currentNote.content"
-          placeholder="笔记内容"
-          class="form-textarea"
-          aria-label="编辑笔记内容"
-        ></textarea>
+    <Modal :show="showEditModal" title="编辑笔记" @close="closeEditModal">
+      <input
+        v-model="currentNote.title"
+        placeholder="笔记标题"
+        class="form-input"
+        aria-label="编辑笔记标题"
+      />
+      <textarea
+        v-model="currentNote.content"
+        placeholder="笔记内容"
+        class="form-textarea"
+        aria-label="编辑笔记内容"
+      ></textarea>
+      <template #footer>
         <div class="modal-actions">
           <button @click="updateNote" :disabled="isUpdating" class="action-button primary-button">
             {{ isUpdating ? '更新中...' : '保存' }}
@@ -72,75 +70,45 @@
           <button @click="closeEditModal" class="action-button secondary-button">取消</button>
         </div>
         <p v-if="editErrorMessage" class="error-message">{{ editErrorMessage }}</p>
-      </div>
-    </div>
-
-    <button @click="logout" class="logout-button">退出</button>
+      </template>
+    </Modal>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import axios from 'axios';
+import { notesService } from '../api';
+import { clearToken } from '../auth';
 import { useRouter } from 'vue-router';
+import Modal from '../components/ModalComponent.vue';
 
 const notes = ref([]);
 const loading = ref(false);
 const errorMessage = ref('');
 
-// 新增笔记相关
 const newNote = ref({ title: '', content: '' });
 const isAdding = ref(false);
 const addErrorMessage = ref('');
-const showAddModal = ref(false); // **新增：控制新增笔记模态框的显示**
+const showAddModal = ref(false);
 
-// 编辑模态框相关
 const showEditModal = ref(false);
 const currentNote = ref({ id: '', title: '', content: '', createdAt: '' });
 const isUpdating = ref(false);
 const editErrorMessage = ref('');
 
 const router = useRouter();
-const API_BASE_URL = 'http://localhost:8000'; // 你的后端API地址
 
-// 辅助函数：获取 Bearer Token 的 Axios 配置
-const getAuthHeaders = () => {
-  const token = localStorage.getItem('user_token');
-  if (!token) {
-    errorMessage.value = '错误：未找到认证信息，请重新登录。';
-    router.push('/');
-    return null;
-  }
-  return {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  };
-};
-
-// --- CRUD 操作 ---
-
-// 获取笔记列表 (保持不变)
 const fetchNotes = async () => {
   notes.value = [];
   errorMessage.value = '';
   loading.value = true;
-  const authHeaders = getAuthHeaders();
-  if (!authHeaders) {
-    loading.value = false;
-    return;
-  }
 
   try {
-    const response = await axios.get(`${API_BASE_URL}/notes/`, authHeaders);
+    const response = await notesService.getNotes();
     notes.value = response.data;
   } catch (error) {
     console.error('获取笔记失败:', error);
-    if (error.response && error.response.status === 401) {
-      errorMessage.value = '认证失败，请重新登录。';
-      localStorage.removeItem('user_token');
-      router.push('/');
-    } else if (error.response && error.response.data && error.response.data.message) {
+    if (error.response && error.response.data && error.response.data.message) {
       errorMessage.value = `获取笔记失败：${error.response.data.message}`;
     } else {
       errorMessage.value = '获取笔记失败，请检查网络或服务器。';
@@ -150,19 +118,16 @@ const fetchNotes = async () => {
   }
 };
 
-// **新增：打开新增笔记模态框**
 const openAddModal = () => {
-  newNote.value = { title: '', content: '' }; // 清空表单
-  addErrorMessage.value = ''; // 清除错误信息
+  newNote.value = { title: '', content: '' };
+  addErrorMessage.value = '';
   showAddModal.value = true;
 };
 
-// **新增：关闭新增笔记模态框**
 const closeAddModal = () => {
   showAddModal.value = false;
 };
 
-// 添加笔记
 const addNote = async () => {
   addErrorMessage.value = '';
   if (!newNote.value.title.trim() || !newNote.value.content.trim()) {
@@ -171,23 +136,14 @@ const addNote = async () => {
   }
 
   isAdding.value = true;
-  const authHeaders = getAuthHeaders();
-  if (!authHeaders) {
-    isAdding.value = false;
-    return;
-  }
 
   try {
-    const response = await axios.post(`${API_BASE_URL}/notes/`, newNote.value, authHeaders);
-    notes.value.unshift(response.data); // 将新笔记添加到列表开头
-    closeAddModal(); // **修改：添加成功后关闭模态框**
+    const response = await notesService.addNote(newNote.value); // 使用封装的 API
+    notes.value.unshift(response.data);
+    closeAddModal();
   } catch (error) {
     console.error('添加笔记失败:', error);
-    if (error.response && error.response.status === 401) {
-      addErrorMessage.value = '认证失败，请重新登录。';
-      localStorage.removeItem('user_token');
-      router.push('/');
-    } else if (error.response && error.response.data && error.response.data.message) {
+    if (error.response && error.response.data && error.response.data.message) {
       addErrorMessage.value = `添加笔记失败：${error.response.data.message}`;
     } else {
       addErrorMessage.value = '添加笔记失败，请检查网络或服务器。';
@@ -197,19 +153,16 @@ const addNote = async () => {
   }
 };
 
-// 打开编辑模态框 (保持不变)
 const openEditModal = (note) => {
   currentNote.value = { ...note };
   showEditModal.value = true;
   editErrorMessage.value = '';
 };
 
-// 关闭编辑模态框 (保持不变)
 const closeEditModal = () => {
   showEditModal.value = false;
 };
 
-// 更新笔记 (保持不变)
 const updateNote = async () => {
   editErrorMessage.value = '';
   if (!currentNote.value.title.trim() || !currentNote.value.content.trim()) {
@@ -218,18 +171,12 @@ const updateNote = async () => {
   }
 
   isUpdating.value = true;
-  const authHeaders = getAuthHeaders();
-  if (!authHeaders) {
-    isUpdating.value = false;
-    return;
-  }
 
   try {
-    const response = await axios.put(
-      `${API_BASE_URL}/notes/${currentNote.value.id}/`,
-      { title: currentNote.value.title, content: currentNote.value.content },
-      authHeaders
-    );
+    const response = await notesService.updateNote(currentNote.value.id, {
+      title: currentNote.value.title,
+      content: currentNote.value.content,
+    }); // 使用封装的 API
     const index = notes.value.findIndex(n => n.id === currentNote.value.id);
     if (index !== -1) {
       notes.value[index] = { ...response.data };
@@ -237,11 +184,7 @@ const updateNote = async () => {
     closeEditModal();
   } catch (error) {
     console.error('更新笔记失败:', error);
-    if (error.response && error.response.status === 401) {
-      editErrorMessage.value = '认证失败，请重新登录。';
-      localStorage.removeItem('user_token');
-      router.push('/');
-    } else if (error.response && error.response.data && error.response.data.message) {
+    if (error.response && error.response.data && error.response.data.message) {
       editErrorMessage.value = `更新笔记失败：${error.response.data.message}`;
     } else {
       editErrorMessage.value = '更新笔记失败，请检查网络或服务器。';
@@ -251,29 +194,20 @@ const updateNote = async () => {
   }
 };
 
-// 确认删除笔记 (保持不变)
 const confirmDelete = async (noteId) => {
   if (confirm('确定要删除这篇笔记吗？')) {
     await deleteNote(noteId);
   }
 };
 
-// 删除笔记 (保持不变)
 const deleteNote = async (noteId) => {
-  const authHeaders = getAuthHeaders();
-  if (!authHeaders) return;
-
   try {
-    await axios.delete(`${API_BASE_URL}/notes/${noteId}/`, authHeaders);
+    await notesService.deleteNote(noteId); // 使用封装的 API
     notes.value = notes.value.filter(note => note.id !== noteId);
     alert('笔记删除成功！');
   } catch (error) {
     console.error('删除笔记失败:', error);
-    if (error.response && error.response.status === 401) {
-      alert('认证失败，请重新登录。');
-      localStorage.removeItem('user_token');
-      router.push('/');
-    } else if (error.response && error.response.data && error.response.data.message) {
+    if (error.response && error.response.data && error.response.data.message) {
       alert(`删除笔记失败：${error.response.data.message}`);
     } else {
       alert('删除笔记失败，请检查网络或服务器。');
@@ -281,14 +215,12 @@ const deleteNote = async (noteId) => {
   }
 };
 
-// 登出功能 (保持不变)
 const logout = () => {
-  localStorage.removeItem('user_token');
+  clearToken();
   alert('您已成功登出。');
   router.push('/');
 };
 
-// 组件挂载时自动获取笔记 (保持不变)
 onMounted(() => {
   fetchNotes();
 });
@@ -313,31 +245,12 @@ h1 {
 }
 
 .add-new-button {
-  background-color: #28a745; /* 绿色 */
-  margin-bottom: 20px; /* 和其他按钮保持距离 */
+  background-color: #28a745;
+  margin-bottom: 20px;
 }
 .add-new-button:hover {
   background-color: #218838;
 }
-
-/* 新增笔记表单样式 */
-/* .add-note-form {
-  background-color: white;
-  padding: 25px;
-  border-radius: 10px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
-  width: 100%;
-  max-width: 600px;
-  margin-bottom: 30px;
-  text-align: left;
-}
-
-.add-note-form h2 {
-  margin-top: 0;
-  color: #34495e;
-  font-size: 1.8em;
-  margin-bottom: 20px;
-} */
 
 .form-input,
 .form-textarea {
@@ -367,7 +280,7 @@ h1 {
 }
 
 .add-button {
-  background-color: #28a745; /* 绿色 */
+  background-color: #28a745;
 }
 .add-button:hover:not(:disabled) {
   background-color: #218838;
@@ -385,14 +298,14 @@ h1 {
 }
 
 .fetch-button {
-  background-color: #3498db; /* 蓝色 */
+  background-color: #3498db;
 }
 .fetch-button:hover {
   background-color: #2980b9;
 }
 
 .logout-button {
-  background-color: #e74c3c; /* 红色 */
+  background-color: #e74c3c;
   margin-top: 40px;
 }
 .logout-button:hover {
@@ -461,18 +374,18 @@ h1 {
 .note-actions {
   margin-top: 15px;
   display: flex;
-  gap: 10px; /* 按钮之间的间距 */
+  gap: 10px;
 }
 
 .edit-button {
-  background-color: #ffc107; /* 琥珀色 */
+  background-color: #ffc107;
 }
 .edit-button:hover {
   background-color: #e0a800;
 }
 
 .delete-button {
-  background-color: #dc3545; /* 红色 */
+  background-color: #dc3545;
 }
 .delete-button:hover {
   background-color: #c82333;
@@ -518,14 +431,14 @@ h1 {
 }
 
 .primary-button {
-  background-color: #007bff; /* 蓝色 */
+  background-color: #007bff;
 }
 .primary-button:hover:not(:disabled) {
   background-color: #0056b3;
 }
 
 .secondary-button {
-  background-color: #6c757d; /* 灰色 */
+  background-color: #6c757d;
 }
 .secondary-button:hover {
   background-color: #545b62;

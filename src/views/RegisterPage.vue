@@ -45,7 +45,7 @@
 
 <script setup>
 import { ref } from 'vue';
-import axios from 'axios';
+import { authService } from '../api';
 import { useRouter } from 'vue-router';
 
 const username = ref('');
@@ -55,30 +55,25 @@ const errorMessage = ref('');
 const loading = ref(false);
 
 const router = useRouter();
-const API_BASE_URL = 'http://localhost:8000'; // 你的后端API地址
 
 const handleRegister = async () => {
-  errorMessage.value = ''; // 清除之前的错误信息
+  errorMessage.value = '';
   if (password.value !== confirmPassword.value) {
     errorMessage.value = '两次输入的密码不一致！';
     return;
   }
-  if (password.value.length < 6) { // 简单密码强度检查
+  if (password.value.length < 6) {
     errorMessage.value = '密码长度至少为6位。';
     return;
   }
 
-  loading.value = true; // 设置加载状态
+  loading.value = true;
 
   try {
-    const response = await axios.post(`${API_BASE_URL}/register/`, {
-      username: username.value,
-      password: password.value,
-    });
-
-    if (response.status === 201) { // 201 Created
+    const response = await authService.register(username.value, password.value);
+    if (response.status === 201) {
       alert('注册成功！请登录。');
-      router.push('/'); // 注册成功后跳转回登录页
+      router.push('/');
     }
   } catch (error) {
     console.error('注册请求失败:', error);
@@ -96,7 +91,7 @@ const handleRegister = async () => {
       errorMessage.value = `注册失败：${error.message}`;
     }
   } finally {
-    loading.value = false; // 无论成功或失败，都解除加载状态
+    loading.value = false;
   }
 };
 </script>
