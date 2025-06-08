@@ -2,7 +2,7 @@ import axios from 'axios';
 import { getToken, clearToken } from '../auth';
 import router from '../router';
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = 'http://notes-app-m8l9.onrender.com';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
